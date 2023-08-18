@@ -1280,7 +1280,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         for key in keys:
                             default_flags[key] = False
             shape.flags = default_flags
-            shape.flags.update(flags)
+            if flags is not None:
+                shape.flags.update(flags)
             shape.other_data = other_data
 
             s.append(shape)
