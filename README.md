@@ -21,6 +21,8 @@
       <br/>
 - [x] **Convert** Rectangle <--> Polygon in Right Click menu (**Ctrl+T**).
 - [x] **Merge** shapes into a Rectangle shape in Right Click menu (**Ctrl+M**).
+- [x] **Move** with arrow keys
+- [x] **Select** multiple shapes
 
 _enhanced by locpnh_
 
