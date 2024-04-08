@@ -2,7 +2,6 @@ from qtpy import QtWidgets
 from qtpy import QtCore
 from qtpy import QtGui
 
-from labelme.logger import logger
 import labelme.utils
 
 
