@@ -413,9 +413,7 @@ class Canvas(QtWidgets.QWidget):
                     elif not self.outOfPixmap(pos):
                         # Create new shape.
                         self.current = Shape(shape_type=self.createMode)
-                        self.current.addPoint(
-                            pos, label=0 if is_shift_pressed else 1
-                        )
+                        self.current.addPoint(pos)
                         if self.createMode == "point":
                             self.finalise()
                         else:
