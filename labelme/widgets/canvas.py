@@ -17,8 +17,13 @@ CURSOR_POINT = QtCore.Qt.PointingHandCursor
 CURSOR_DRAW = QtCore.Qt.CrossCursor
 CURSOR_MOVE = QtCore.Qt.ClosedHandCursor
 CURSOR_GRAB = QtCore.Qt.OpenHandCursor
+CURSOR_ROTATE = QtCore.Qt.SizeAllCursor
 
 MOVE_SPEED = 1.0
+
+# change the value to adjust sensitivity to mouse movement
+ANGLES_PER_PIXEL = 0.5
+ANGLES_PER_PIXEL_LOW_SPEED = 3.0
 
 
 class Canvas(QtWidgets.QWidget):
@@ -28,6 +33,7 @@ class Canvas(QtWidgets.QWidget):
     newShape = QtCore.Signal()
     selectionChanged = QtCore.Signal(list)
     shapeMoved = QtCore.Signal()
+    shapeRotated = QtCore.Signal()
     drawingPolygon = QtCore.Signal(bool)
     edgeSelected = QtCore.Signal(bool, object)
     vertexSelected = QtCore.Signal(bool)
@@ -85,6 +91,8 @@ class Canvas(QtWidgets.QWidget):
         self.hShapeIsSelected = False
         self._painter = QtGui.QPainter()
         self._cursor = CURSOR_DEFAULT
+
+        self._rotate_anchor_point = None
         # Menus:
         # 0: right-click without selection and dragging of shapes
         # 1: right-click with selection and dragging of shapes
@@ -262,7 +270,7 @@ class Canvas(QtWidgets.QWidget):
             return
 
         # Polygon copy moving.
-        if QtCore.Qt.RightButton & ev.buttons():
+        if QtCore.Qt.RightButton & ev.buttons() and not self.isRotatingShapes():
             if self.selectedShapesCopy and self.prevPoint:
                 self.overrideCursor(CURSOR_MOVE)
                 self.boundedMoveShapes(self.selectedShapesCopy, pos)
@@ -275,7 +283,7 @@ class Canvas(QtWidgets.QWidget):
             return
 
         # Polygon/Vertex moving.
-        if QtCore.Qt.LeftButton & ev.buttons():
+        if QtCore.Qt.LeftButton & ev.buttons() and not self.isRotatingShapes():
             if self.selectedVertex():
                 self.boundedMoveVertex(pos)
                 self.repaint()
@@ -285,6 +293,26 @@ class Canvas(QtWidgets.QWidget):
                 self.boundedMoveShapes(self.selectedShapes, pos)
                 self.repaint()
                 self.movingShape = True
+            return
+
+        # logic to process the rotating (no clicking)
+        # in rotation mode, the hovering/highlighting action is forbidden
+        if self.isRotatingShapes() and self._rotate_anchor_point is not None:
+            angle_speed = ANGLES_PER_PIXEL
+            if ev.modifiers() == QtCore.Qt.ShiftModifier:
+                angle_speed = ANGLES_PER_PIXEL_LOW_SPEED
+
+            delta_angle = (self._rotate_anchor_point.y() - pos.y()) * angle_speed
+
+            for shape in self.selectedShapes:
+                last_rotate_points = shape.new_points
+                shape.rotate(degree=delta_angle)
+                # bounding constraint for rotation
+                if any(self.outOfPixmap(p) for p in shape.new_points):
+                    shape.new_points = last_rotate_points
+
+            self.repaint()
+
             return
 
         # Just hovering over the canvas, 2 possibilities:
@@ -426,6 +454,9 @@ class Canvas(QtWidgets.QWidget):
                             self.drawingPolygon.emit(True)
                             self.update()
                 elif self.editing():
+                    if self.isRotatingShapes():
+                        return
+
                     if self.selectedEdge():
                         self.addPointToEdge()
                     elif (
@@ -440,6 +471,9 @@ class Canvas(QtWidgets.QWidget):
                     self.prevPoint = pos
                     self.repaint()
             elif ev.button() == QtCore.Qt.RightButton and self.editing():
+                if self.isRotatingShapes():
+                    return
+
                 group_mode = int(ev.modifiers()) == QtCore.Qt.ControlModifier
                 if not self.selectedShapes or (
                     self.hShape is not None
@@ -451,6 +485,9 @@ class Canvas(QtWidgets.QWidget):
 
     def mouseReleaseEvent(self, ev):
         if ev.button() == QtCore.Qt.RightButton:
+            if self.isRotatingShapes():
+                return
+
             menu = self.menus[len(self.selectedShapesCopy) > 0]
             self.restoreCursor()
             if (
@@ -481,6 +518,12 @@ class Canvas(QtWidgets.QWidget):
                 self.shapeMoved.emit()
 
             self.movingShape = False
+
+        if self.isRotatingShapes():
+            for s in filter(lambda shape : shape.isRotating(), self.selectedShapes):
+                s.applyRotate()
+
+            self.shapeRotated.emit()
 
     def endMove(self, copy):
         assert self.selectedShapes and self.selectedShapesCopy
@@ -828,6 +871,20 @@ class Canvas(QtWidgets.QWidget):
             self.repaint()
             self.movingShape = True
 
+    def isRotatingShapes(self):
+
+        return any(shape.isRotating() for shape in self.selectedShapes)
+
+    def rotateSelectedShapes(self, value):
+
+        if value:
+            self.overrideCursor(CURSOR_ROTATE)
+        else:
+            self.overrideCursor(CURSOR_DEFAULT)
+
+        for shape in self.selectedShapes:
+            shape.setRotating(value)
+
     def keyPressEvent(self, ev):
         modifiers = ev.modifiers()
         key = ev.key()
@@ -849,6 +906,20 @@ class Canvas(QtWidgets.QWidget):
                 self.moveByKeyboard(QtCore.QPointF(-MOVE_SPEED, 0.0))
             elif key == QtCore.Qt.Key_Right:
                 self.moveByKeyboard(QtCore.QPointF(MOVE_SPEED, 0.0))
+            elif key == QtCore.Qt.Key_R:
+                if not self.isRotatingShapes() and len(self.selectedShapes) > 0:
+                    self.storeShapes()
+                    self.rotateSelectedShapes(True)
+                    current_cursor = QtGui.QCursor().pos()
+                    self._rotate_anchor_point = self.transformPos(self.mapFromGlobal(current_cursor))
+                elif self.isRotatingShapes():
+                    self.rotateSelectedShapes(False)
+                    self._rotate_anchor_point = None
+                    self.repaint()
+            elif key == QtCore.Qt.Key_Escape and self.isRotatingShapes():
+                self.rotateSelectedShapes(False)
+                self._rotate_anchor_point = None
+                self.repaint()
 
     def keyReleaseEvent(self, ev):
         modifiers = ev.modifiers()

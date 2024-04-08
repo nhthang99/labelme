@@ -37,7 +37,7 @@ Remove **.labelmerc** file to apply the new keyboard shortcuts
 
 ```bash
 # Setup conda
-conda create --name labelme
+conda create --name labelme python=<python-version> # Recommend 3.5<=python<=3.9>
 conda activate labelme
 ```
 2. Install dependencies

@@ -1,6 +1,9 @@
 import copy
 import math
 
+from functools import reduce
+from contextlib import contextmanager
+
 from qtpy import QtCore
 from qtpy import QtGui
 
@@ -21,9 +24,17 @@ DEFAULT_HVERTEX_FILL_COLOR = QtGui.QColor(255, 255, 255, 255)  # hovering
 
 class Shape(object):
 
-    P_SQUARE, P_ROUND = 0, 1
+    # Render handles as squares
+    P_SQUARE = 0
 
-    MOVE_VERTEX, NEAR_VERTEX = 0, 1
+    # Render handles as circles
+    P_ROUND = 1
+
+    # Flag for the handles we would move if dragging
+    MOVE_VERTEX = 0
+
+    # Flag for all other handles on the current shape
+    NEAR_VERTEX = 1
 
     # The following class variables influence the drawing of all shape objects.
     line_color = DEFAULT_LINE_COLOR
@@ -35,6 +46,8 @@ class Shape(object):
     point_type = P_ROUND
     point_size = 8
     scale = 1.0
+    
+    center_scale = 1.5
 
     def __init__(
         self,
@@ -47,6 +60,7 @@ class Shape(object):
         self.label = label
         self.group_id = group_id
         self.points = []
+        self.new_points = []
         self.fill = False
         self.selected = False
         self.shape_type = shape_type
@@ -68,7 +82,8 @@ class Shape(object):
             # is used for drawing the pending line a different color.
             self.line_color = line_color
 
-        self.shape_type = shape_type
+        # check whether the shape is being rotated
+        self._is_rotating = False
 
     @property
     def shape_type(self):
@@ -88,6 +103,66 @@ class Shape(object):
         ]:
             raise ValueError("Unexpected shape_type: {}".format(value))
         self._shape_type = value
+
+    @property
+    def center(self):
+        if len(self.points) == 0:
+            return None
+
+        return reduce(lambda x, y : x+y, self.points) / len(self.points)
+
+    @contextmanager
+    def rotatingRenderScope(self):
+
+        if not self.isRotating() or len(self.new_points) == 0:
+            yield
+        else:
+            raw_points = self.points
+            self.points = self.new_points
+            yield
+            self.points = raw_points
+
+    def isRotating(self):
+
+        return self._is_rotating
+
+    def setRotating(self, value):
+
+        # rotating is only implemented for polygon
+        if self.shape_type != "polygon":
+            return
+
+        self._is_rotating = value
+
+        if not value:
+            self.new_points = []
+
+    def rotate(self, degree):
+
+        """
+        Rotate the shape by certain degree
+        """
+        center : QtCore.QPointF = self.center
+        if center is None or not self.isRotating():
+            return
+
+        radius = degree / 180.0 * math.pi
+        cos = math.cos(radius)
+        sin = math.sin(radius)
+        cx, cy = center.x(), center.y()
+        new_points = [
+            QtCore.QPointF(
+                cos * (point.x() - cx) - sin * (point.y() - cy) + cx,
+                sin * (point.x() - cx) + cos * (point.y() - cy) + cy
+            ) for point in self.points
+        ]
+
+        self.new_points = new_points
+
+    def applyRotate(self):
+
+        self.points = self.new_points
+        self.setRotating(False)
 
     def close(self):
         self._closed = True
@@ -156,17 +231,22 @@ class Shape(object):
                     line_path.lineTo(p)
                     self.drawVertex(vrtx_path, i)
             else:
-                line_path.moveTo(self.points[0])
-                # Uncommenting the following line will draw 2 paths
-                # for the 1st vertex, and make it non-filled, which
-                # may be desirable.
-                # self.drawVertex(vrtx_path, 0)
+                with self.rotatingRenderScope():
 
-                for i, p in enumerate(self.points):
-                    line_path.lineTo(p)
-                    self.drawVertex(vrtx_path, i)
-                if self.isClosed():
-                    line_path.lineTo(self.points[0])
+                    line_path.moveTo(self.points[0])
+                    # Uncommenting the following line will draw 2 paths
+                    # for the 1st vertex, and make it non-filled, which
+                    # may be desirable.
+                    # self.drawVertex(vrtx_path, 0)
+
+                    for i, p in enumerate(self.points):
+                        line_path.lineTo(p)
+                        self.drawVertex(vrtx_path, i)
+                    if self.isClosed():
+                        line_path.lineTo(self.points[0])
+
+            if self.isRotating():
+                self.drawCenter(vrtx_path)
 
             painter.drawPath(line_path)
             painter.drawPath(vrtx_path)
@@ -178,6 +258,19 @@ class Shape(object):
                     else self.fill_color
                 )
                 painter.fillPath(line_path, color)
+
+    def drawCenter(self, path):
+
+        d = self.point_size / self.scale * self.center_scale
+        center = self.center
+        shape = self.point_type
+        self._vertex_fill_color = self.vertex_fill_color
+        if shape == self.P_SQUARE:
+            path.addRect(center.x() - d / 2, center.y() - d / 2, d, d)
+        elif shape == self.P_ROUND:
+            path.addEllipse(center, d / 2.0, d / 2.0)
+        else:
+            assert False, "unsupported vertex shape"
 
     def drawVertex(self, path, i):
         d = self.point_size / self.scale
