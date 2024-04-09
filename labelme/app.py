@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import functools
+import html
 import math
 import os
 import os.path as osp
@@ -574,6 +575,15 @@ class MainWindow(QtWidgets.QMainWindow):
             enabled=False,
         )
 
+        multi_edit = action(
+            self.tr("&Multi Edit"),
+            self.multiEditLabel,
+            shortcuts["multi_edit_labels"],
+            "multi_edit",
+            self.tr("Modify the label of the selected polygons"),
+            enabled=False,
+        )
+
         editValue = action(
             self.tr("&Edit Value"),
             self.setEditValue,
@@ -596,7 +606,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Lavel list context menu.
         labelMenu = QtWidgets.QMenu()
-        utils.addActions(labelMenu, (edit, delete))
+        utils.addActions(labelMenu, (edit, multi_edit, delete))
         self.labelList.setContextMenuPolicy(Qt.CustomContextMenu)
         self.labelList.customContextMenuRequested.connect(
             self.popLabelListMenu
@@ -616,6 +626,7 @@ class MainWindow(QtWidgets.QMainWindow):
             delete=delete,
             merge=merge,
             edit=edit,
+            multi_edit=multi_edit,
             editValue=editValue,
             duplicate=duplicate,
             undoLastPoint=undoLastPoint,
@@ -1099,6 +1110,24 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         if text is None:
             return
+        return self._updateLabel(item, shape, text, flags, group_id)
+
+    def multiEditLabel(self):
+        items = self.labelList.selectedItems()
+        if not items:
+            return
+        shape = items[0].shape()
+        text, flags, group_id = self.labelDialog.popUp(
+            text=shape.label,
+            flags=shape.flags,
+            group_id=shape.group_id
+        )
+        if text is None:
+            return
+        for item in items:
+            self._updateLabel(item, item.shape(), text, flags, group_id)
+
+    def _updateLabel(self, item, shape, text, flags, group_id):
         if not self.validateLabel(text):
             self.errorMessage(
                 self.tr("Invalid label"),
@@ -1113,13 +1142,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._update_shape_color(shape)
         if shape.group_id is None:
-            item.setText(shape.label)
+            item.setText(
+                '{} <font color="#{:02x}{:02x}{:02x}">●</font>'.format(
+                    html.escape(shape.label), *shape.fill_color.getRgb()[:3]
+                )
+            )
         else:
             item.setText("{} ({})".format(shape.label, shape.group_id))
         self.setDirty()
         if self.uniqLabelList.findItemByLabel(shape.label) is None:
             item = self.uniqLabelList.createItemFromLabel(shape.label)
+        if self.uniqLabelList.findItemByLabel(shape.label) is None:
+            item = self.uniqLabelList.createItemFromLabel(shape.label)
             self.uniqLabelList.addItem(item)
+            rgb = self._get_rgb_by_label(shape.label)
+            self.uniqLabelList.setItemLabel(item, shape.label, rgb)
             rgb = self._get_rgb_by_label(shape.label)
             self.uniqLabelList.setItemLabel(item, shape.label, rgb)
 
@@ -1188,6 +1225,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.actions.convertToRectangleOrPolygon.setEnabled(n_selected)
         self.actions.edit.setEnabled(n_selected == 1)
         self.actions.editValue.setEnabled(n_selected == 1)
+        self.actions.multi_edit.setEnabled(n_selected > 1)
 
         if n_selected == 1 and selected_shapes[0]:
             if selected_shapes[0].other_data is not None:
@@ -1202,6 +1240,7 @@ class MainWindow(QtWidgets.QMainWindow):
         label_list_item = LabelListWidgetItem(text, shape)
         self.labelList.addItem(label_list_item)
         if self.uniqLabelList.findItemByLabel(shape.label) is None:
+        if self.uniqLabelList.findItemByLabel(shape.label) is None:
             item = self.uniqLabelList.createItemFromLabel(shape.label)
             self.uniqLabelList.addItem(item)
             rgb = self._get_rgb_by_label(shape.label)
@@ -1211,12 +1250,17 @@ class MainWindow(QtWidgets.QMainWindow):
             action.setEnabled(True)
 
         self._update_shape_color(shape)
+        self._update_shape_color(shape)
 
         label_list_item.setText(
             '{} <font color="#{:02x}{:02x}{:02x}">●</font>'.format(
+                html.escape(text), *shape.fill_color.getRgb()[:3]
                 text, *shape.fill_color.getRgb()[:3]
             )
         )
+
+    def _update_shape_color(self, shape):
+        r, g, b = self._get_rgb_by_label(shape.label)
 
     def _update_shape_color(self, shape):
         r, g, b = self._get_rgb_by_label(shape.label)
@@ -1235,6 +1279,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.uniqLabelList.addItem(item)
                 rgb = self._get_rgb_by_label(label)
                 self.uniqLabelList.setItemLabel(item, label, rgb)
+            item = self.uniqLabelList.findItemByLabel(label)
+            if item is None:
+                item = self.uniqLabelList.createItemFromLabel(label)
+                self.uniqLabelList.addItem(item)
+                rgb = self._get_rgb_by_label(label)
+                self.uniqLabelList.setItemLabel(item, label, rgb)
             label_id = self.uniqLabelList.indexFromItem(item).row() + 1
             label_id += self._config["shift_auto_shape_color"]
             return LABEL_COLORMAP[label_id % len(LABEL_COLORMAP)]
@@ -1246,6 +1296,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return self._config["label_colors"][label]
         elif self._config["default_shape_color"]:
             return self._config["default_shape_color"]
+        return (0, 255, 0)
 
     def remLabels(self, shapes):
         for shape in shapes:

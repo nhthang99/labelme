@@ -1,3 +1,5 @@
+import math
+
 from qtpy import QtCore
 from qtpy.QtCore import Qt
 from qtpy import QtGui
@@ -44,6 +46,8 @@ class HTMLDelegate(QtWidgets.QStyledItemDelegate):
             )
 
         textRect = style.subElementRect(QStyle.SE_ItemViewItemText, options)
+        textRect.setWidth(int(math.floor(option.rect.width())))
+        textRect.setHeight(int(math.floor(option.rect.height())))
 
         if index.column() != 0:
             textRect.adjust(5, 0, 0, 0)

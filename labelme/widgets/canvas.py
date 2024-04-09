@@ -314,16 +314,16 @@ class Canvas(QtWidgets.QWidget):
                 self.update()
                 break
             elif index_edge is not None and shape.canAddPoint():
-                if self.selectedVertex():
-                    self.hShape.highlightClear()
-                self.prevhVertex = self.hVertex
-                self.hVertex = None
-                self.prevhShape = self.hShape = shape
-                self.prevhEdge = self.hEdge = index_edge
-                self.overrideCursor(CURSOR_POINT)
-                self.setToolTip(self.tr("Click to create point"))
-                self.setStatusTip(self.toolTip())
-                self.update()
+                # if self.selectedVertex():
+                #     self.hShape.highlightClear()
+                # self.prevhVertex = self.hVertex
+                # self.hVertex = None
+                # self.prevhShape = self.hShape = shape
+                # self.prevhEdge = self.hEdge = index_edge
+                # self.overrideCursor(CURSOR_POINT)
+                # self.setToolTip(self.tr("Click to create point"))
+                # self.setStatusTip(self.toolTip())
+                # self.update()
                 break
             elif shape.containsPoint(pos):
                 if self.selectedVertex():
